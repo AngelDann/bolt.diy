@@ -15,4 +15,4 @@ services:
       DEFAULT_NUM_CTX: 32768
       OPENAI_API_KEY: ${OPENAI_API_KEY}
 
-    command: pnpm run dockerstart
+    command: sh -c "pnpm add wrangler && pnpm run dockerstart"
