@@ -2,50 +2,31 @@
 FROM node:22-bookworm-slim AS build
 WORKDIR /app
 
-# CI-friendly env
 ENV HUSKY=0
 ENV CI=true
 
-# Use pnpm
 RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 
-# Ensure git is available for build and runtime scripts
 RUN apt-get update && apt-get install -y --no-install-recommends git \
   && rm -rf /var/lib/apt/lists/*
 
-# Accept (optional) build-time public URL for Remix/Vite (Coolify/Dokploy can pass it)
 ARG VITE_PUBLIC_APP_URL
 ENV VITE_PUBLIC_APP_URL=${VITE_PUBLIC_APP_URL}
 
-# Install deps efficiently
 COPY package.json pnpm-lock.yaml* ./
 RUN pnpm fetch
 
-# Copy source and build
 COPY . .
 
-# Install with dev deps because they are needed to build
 RUN pnpm install --offline --frozen-lockfile
 
-# Build the Remix app (SSR + client)
 RUN NODE_OPTIONS=--max-old-space-size=4096 pnpm run build
 
 
 # ---- production dependencies stage ----
 FROM build AS prod-deps
 
-# Keep only production deps for runtime
 RUN pnpm prune --prod --ignore-scripts
-
-# Wrangler is required at runtime by:
-# pnpm run dockerstart
-# which calls:
-# wrangler pages dev ./build/client ...
-#
-# Some Bolt DIY versions keep wrangler in devDependencies,
-# so pnpm prune --prod removes it. Install it as a production dependency.
-# Use Wrangler 3.x because @remix-run/dev expects wrangler@^3.28.2.
-RUN pnpm add -P wrangler@^3.28.2 --ignore-scripts
 
 
 # ---- production stage ----
@@ -55,65 +36,49 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=5173
 ENV HOST=0.0.0.0
+ENV WRANGLER_SEND_METRICS=false
+ENV RUNNING_IN_DOCKER=true
 
-# Non-sensitive build arguments
 ARG VITE_LOG_LEVEL=warn
 ARG DEFAULT_NUM_CTX=32768
 
-# Set non-sensitive environment variables
-ENV WRANGLER_SEND_METRICS=false \
-    VITE_LOG_LEVEL=${VITE_LOG_LEVEL} \
-    DEFAULT_NUM_CTX=${DEFAULT_NUM_CTX} \
-    RUNNING_IN_DOCKER=true
+ENV VITE_LOG_LEVEL=${VITE_LOG_LEVEL}
+ENV DEFAULT_NUM_CTX=${DEFAULT_NUM_CTX}
 
-# Note: API keys should be provided at runtime via docker run -e
-# or docker-compose environment variables.
-# Example:
-# OPENAI_API_KEY=sk-your_key_here
-
-# Install curl for healthchecks
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
   && rm -rf /var/lib/apt/lists/*
 
-# Copy built files and scripts
+# Install Wrangler globally because dockerstart requires the "wrangler" binary at runtime.
+# This avoids pnpm prune removing it from node_modules.
+RUN npm install -g wrangler@3.114.14
+
 COPY --from=prod-deps /app/build /app/build
 COPY --from=prod-deps /app/node_modules /app/node_modules
 COPY --from=prod-deps /app/package.json /app/package.json
 COPY --from=prod-deps /app/bindings.sh /app/bindings.sh
 
-# Pre-configure Wrangler to disable metrics
 RUN mkdir -p /root/.config/.wrangler && \
     echo '{"enabled":false}' > /root/.config/.wrangler/metrics.json
 
-# Make bindings script executable
 RUN chmod +x /app/bindings.sh
 
 EXPOSE 5173
 
-# Healthcheck for deployment platforms
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=5 \
   CMD curl -fsS http://localhost:5173/ || exit 1
 
-# Start using dockerstart script with Wrangler
 CMD ["pnpm", "run", "dockerstart"]
 
 
 # ---- development stage ----
 FROM build AS development
 
-# Non-sensitive development arguments
 ARG VITE_LOG_LEVEL=debug
 ARG DEFAULT_NUM_CTX=32768
 
-# Set non-sensitive environment variables for development
-ENV VITE_LOG_LEVEL=${VITE_LOG_LEVEL} \
-    DEFAULT_NUM_CTX=${DEFAULT_NUM_CTX} \
-    RUNNING_IN_DOCKER=true
-
-# Note: API keys should be provided at runtime via docker run -e
-# or docker-compose environment variables.
-# Example:
-# OPENAI_API_KEY=sk-your_key_here
+ENV VITE_LOG_LEVEL=${VITE_LOG_LEVEL}
+ENV DEFAULT_NUM_CTX=${DEFAULT_NUM_CTX}
+ENV RUNNING_IN_DOCKER=true
 
 RUN mkdir -p /app/run
 
