@@ -7,7 +7,8 @@ ENV CI=true
 
 RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 
-RUN apt-get update && apt-get install -y --no-install-recommends git \
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
+  && update-ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
 ARG VITE_PUBLIC_APP_URL
@@ -38,6 +39,8 @@ ENV PORT=5173
 ENV HOST=0.0.0.0
 ENV WRANGLER_SEND_METRICS=false
 ENV RUNNING_IN_DOCKER=true
+# workd (Wrangler) needs a system CA bundle for outbound HTTPS; slim images omit it without ca-certificates.
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 
 ARG VITE_LOG_LEVEL=warn
 ARG DEFAULT_NUM_CTX=32768
@@ -45,7 +48,8 @@ ARG DEFAULT_NUM_CTX=32768
 ENV VITE_LOG_LEVEL=${VITE_LOG_LEVEL}
 ENV DEFAULT_NUM_CTX=${DEFAULT_NUM_CTX}
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl \
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+  && update-ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
 # Install Wrangler globally because dockerstart requires the "wrangler" binary at runtime.
