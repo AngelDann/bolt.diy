@@ -35,6 +35,9 @@ FROM build AS prod-deps
 # Keep only production deps for runtime
 RUN pnpm prune --prod --ignore-scripts
 
+# Wrangler is required at runtime by pnpm run dockerstart
+RUN pnpm add wrangler --prod --ignore-scripts
+
 
 # ---- production stage ----
 FROM prod-deps AS bolt-ai-production
