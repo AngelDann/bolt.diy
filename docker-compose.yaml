@@ -1,6 +1,6 @@
 services:
   bolt-diy:
-    image: ghcr.io/stackblitz-labs/bolt.diy:latest
+    image: bolt-ai:production-v2
     restart: unless-stopped
 
     ports:
