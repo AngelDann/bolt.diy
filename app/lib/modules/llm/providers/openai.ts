@@ -4,6 +4,11 @@ import type { IProviderSetting } from '~/types/model';
 import type { LanguageModelV1 } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 
+/** Codex / some frontier IDs are Responses-API (or legacy completions), not chat/completions — Vercel AI SDK uses chat. */
+function isChatCompletionsIncompatibleOpenAIId(id: string): boolean {
+  return /codex/i.test(id);
+}
+
 export default class OpenAIProvider extends BaseProvider {
   name = 'OpenAI';
   getApiKeyLink = 'https://platform.openai.com/api-keys';
@@ -16,8 +21,9 @@ export default class OpenAIProvider extends BaseProvider {
     /*
      * Essential fallback models - modern OpenAI defaults
      * Keep these stable so users have working options before dynamic loading completes.
-     * GPT-5.4 / GPT-5 / GPT-5-Codex: see https://developers.openai.com/api/docs/models/gpt-5.4,
-     * https://developers.openai.com/api/docs/models/gpt-5, https://developers.openai.com/api/docs/models/gpt-5-codex
+     * GPT-5.4 / GPT-5: see https://developers.openai.com/api/docs/models/gpt-5.4,
+     * https://developers.openai.com/api/docs/models/gpt-5
+     * (Codex models such as gpt-5-codex use /v1/responses, not chat/completions — omitted here.)
      */
     {
       name: 'gpt-5.4',
@@ -68,21 +74,6 @@ export default class OpenAIProvider extends BaseProvider {
       maxTokenAllowed: 400_000,
       maxCompletionTokens: 128_000,
     },
-    {
-      name: 'gpt-5-codex',
-      label: 'GPT-5-Codex',
-      provider: 'OpenAI',
-      maxTokenAllowed: 400_000,
-      maxCompletionTokens: 128_000,
-    },
-    {
-      name: 'gpt-5.1-codex',
-      label: 'GPT-5.1-Codex',
-      provider: 'OpenAI',
-      maxTokenAllowed: 400_000,
-      maxCompletionTokens: 128_000,
-    },
-
     { name: 'gpt-4.1', label: 'GPT-4.1', provider: 'OpenAI', maxTokenAllowed: 128000, maxCompletionTokens: 32768 },
 
     // Cost-effective GPT-4.1 variants
@@ -150,7 +141,8 @@ export default class OpenAIProvider extends BaseProvider {
       (model: any) =>
         model.object === 'model' &&
         (model.id.startsWith('gpt-') || model.id.startsWith('o') || model.id.startsWith('chatgpt-')) &&
-        !staticModelIds.includes(model.id),
+        !staticModelIds.includes(model.id) &&
+        !isChatCompletionsIncompatibleOpenAIId(model.id),
     );
 
     return data.map((m: any) => {
@@ -166,8 +158,6 @@ export default class OpenAIProvider extends BaseProvider {
         contextWindow = 400_000; // Smaller GPT-5.4 variants (OpenAI model docs)
       } else if (m.id?.includes('gpt-5.4')) {
         contextWindow = 1_050_000; // GPT-5.4 + dated snapshots
-      } else if (m.id?.includes('gpt-5-codex') || m.id?.includes('gpt-5.1-codex')) {
-        contextWindow = 400_000; // Codex-optimized GPT-5 variants
       } else if (m.id?.startsWith('gpt-5')) {
         contextWindow = 400_000; // GPT-5 / mini / nano / 5.1-* (non-5.4) / dated snapshots
       } else if (m.id?.includes('gpt-4o')) {
@@ -191,8 +181,8 @@ export default class OpenAIProvider extends BaseProvider {
         maxCompletionTokens = 32000; // Other o1 models: 32K limit
       } else if (m.id?.includes('o3') || m.id?.includes('o4')) {
         maxCompletionTokens = 100000; // o3/o4 models: 100K output limit
-      } else if (m.id?.includes('gpt-5.4') || m.id?.includes('gpt-5-codex') || m.id?.includes('gpt-5.1-codex')) {
-        maxCompletionTokens = 128000; // GPT-5.4 / Codex-class upper bound per OpenAI docs
+      } else if (m.id?.includes('gpt-5.4')) {
+        maxCompletionTokens = 128000; // GPT-5.4 family upper bound per OpenAI docs
       } else if (m.id?.startsWith('gpt-5')) {
         maxCompletionTokens = 128000; // GPT-5 family default max output
       } else if (m.id?.includes('gpt-4.1')) {
@@ -231,6 +221,12 @@ export default class OpenAIProvider extends BaseProvider {
 
     if (!apiKey) {
       throw new Error(`Missing API key for ${this.name} provider`);
+    }
+
+    if (isChatCompletionsIncompatibleOpenAIId(model)) {
+      throw new Error(
+        `Model "${model}" is not available on chat/completions (Bolt uses the OpenAI Chat API). Pick a chat model such as gpt-5.4 or gpt-5, or use Codex from the OpenAI Codex product / Responses API.`,
+      );
     }
 
     const openai = createOpenAI({
