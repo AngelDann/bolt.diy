@@ -1,7 +1,10 @@
 services:
-  bolt-diy:
-    image: ghcr.io/stackblitz-labs/bolt.diy:latest
-    restart: unless-stopped
+  app-prod:
+    image: bolt-ai:production-v3
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: bolt-ai-production
 
     ports:
       - "5173:5173"
@@ -15,4 +18,4 @@ services:
       DEFAULT_NUM_CTX: 32768
       OPENAI_API_KEY: ${OPENAI_API_KEY}
 
-    command: sh -c "pnpm add wrangler && pnpm run dockerstart"
+    restart: unless-stopped
