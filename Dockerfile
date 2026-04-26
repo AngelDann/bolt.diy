@@ -32,11 +32,11 @@ RUN NODE_OPTIONS=--max-old-space-size=4096 pnpm run build
 # ---- production dependencies stage ----
 FROM build AS prod-deps
 
-# Keep only production deps for runtime
 RUN pnpm prune --prod --ignore-scripts
 
-# Wrangler is required at runtime by pnpm run dockerstart
-RUN pnpm add wrangler --prod --ignore-scripts
+# Wrangler is required at runtime by pnpm run dockerstart.
+# It must be installed as a production dependency, not devDependency.
+RUN pnpm add -P wrangler@^3.28.2 --ignore-scripts
 
 
 # ---- production stage ----
